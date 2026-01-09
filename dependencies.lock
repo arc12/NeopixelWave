@@ -1,0 +1,19 @@
+dependencies:
+  idf:
+    source:
+      type: idf
+    version: 5.5.0
+  neopixel:
+    component_hash: aeb83a4a3da03c1d345591fbdcf38fd38e76a4db38fe4384da3b4cf03f76bd2d
+    dependencies: []
+    source:
+      git: git@github.com:arc12/neopixel.git
+      path: .
+      type: git
+    version: 228b4b0b7fbc87c138181dfbdfc214b8cdbc279d
+direct_dependencies:
+- idf
+- neopixel
+manifest_hash: 9c896ed4ee5dabe95cc9e5c4e1ec9db67b34e9e0d41ae860e0480001ad4a5104
+target: esp32c6
+version: 2.0.0
