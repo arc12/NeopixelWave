@@ -22,20 +22,24 @@
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 
 // There are three channels with independed wave specifications which are mapped to either RGB or HSL
-// Modulation of amplitude and wavelength uses a triangle form, with t=0 having no modulation and the amp/lambda being maximally REDUCED at the triangle peak
+// Modulation of amplitude and velocity uses a triangle form, with t=0 having no modulation and the amp/lambda being maximally REDUCED at the triangle peak
+// BEWARE that velocity_mod_ratio less than 1.0 may give rise to negative effective velocities because of the way v is used with time; the wave ends up
+// where it would have been at time t which is less advanced than it was a t - dt.
 typedef struct sChannelDef
 {
     char waveform;             // 'c' for cosine, 't' for triangle, 's' for square, 'u' for uniform (constant - only amplitude properties apply)
     float ratio;                // applies to triangle and square waves. Gives the fraction along the wavelenth of the max for triangle, or is the mark:space ratio for square
     float lambda;              // wavelength in number of pixels
-    float lambda_mod_depth;    // fraction of wavelength REDUCTION at maximum modulation. 0 for no modulation. 0.9 will give 10% at max
-    float lambda_mod_ratio;    // position of triangle peak. 0=ramp down, 0.5=symmetric triangle, 1=ramp up
-    float lambda_mod_period_s; // period for modulation
+    float velocity;            // speed of the wave in pixels/s. Negative is towards the ESP32 and positive is away.
+    float velocity_mod_depth;    // fraction of velocity REDUCTION at maximum modulation. 0 for no modulation. 0.9 will give 10% at max
+    float velocity_mod_ratio;    // position of triangle peak. 0=ramp down, 0.5=symmetric triangle, 1=ramp up. BEWARE - see ***
+    float velocity_mod_period_s; // period for modulation
+    float velocity_mod_offset_s; // offset to apply to the period, effectively a phase shift. May be negative
     float amplitude;           // amplitude in range 0.0-1.0
     float amp_mod_depth;       // similar to lambda
     float amp_mod_ratio;
     float amp_mod_period_s;
-    float velocity;            // speed of the wave in pixels/s. Negative is towards the ESP32 and positive is away.
+    float amp_mod_offset_s;
     float phase;               // value in range -1.0 to 1.0 for fraction of wavelength by which the wave is shifted. Negative towards ESP32, positive away.
     // TODO add velocity modulation ???
 
@@ -53,12 +57,21 @@ typedef struct sChannelDef2
 
 } tChannelDef2;
 
+// for persistence to Flash
+typedef struct sWaveDef
+{
+    char channel_map;  // channels 1,2,3 map to: 'r' for RGB, 'h' for HSL
+    tChannelDef channel1;
+    tChannelDef channel2;
+    tChannelDef channel3;
+} tWaveDef;
+
 // generate a channel value for a pixel, which will either be scaled to an RGB byte or be a HSL value which is then mapped to RGB.
 // NB return values in range 0.0-1.0
 static float channel_value(tChannelDef2 * c, uint32_t t_ms, uint32_t pixel_index){
     float retval = 0;
     float x_prime = fmod(((float)pixel_index - c->velocity * t_ms / 1000.0) / c->lambda + c->phase, 1.0);
-    if (x_prime < 0)
+    while (x_prime < 0)
         x_prime += 1.0;
 
     if (c->waveform == 'c') {
@@ -95,25 +108,26 @@ static float channel_value(tChannelDef2 * c, uint32_t t_ms, uint32_t pixel_index
     return retval;
 }
 
-inline static float modulate_amp(float amplitude, float amp_mod_depth, float amp_mod_ratio, float amp_mod_period_s, uint32_t t_ms){
-    // amplitude of output may be modulated. A triangle is assumed
-    float a_scaled = amplitude;
-    if (amp_mod_depth > 0)
+inline static float modulate(float baseline, float mod_depth, float mod_ratio, float mod_period_s, float mod_offset_s, uint32_t t_ms){
+    // velocity or amplitude of output may be modulated. A triangle is assumed
+    float scaled = baseline;
+    if (mod_depth > 0)
     {
-        float a = fmod(0.001 * t_ms / amp_mod_period_s, 1.0);
-        if (a <= amp_mod_ratio)
+        float a = fmod((0.001 * t_ms + mod_offset_s) / mod_period_s, 1.0);
+        if (a <= mod_ratio)
         {
-            a_scaled *= 1.0 + amp_mod_depth * (a / amp_mod_ratio - 1.0);
+            scaled *= 1.0 + mod_depth * (a / mod_ratio - 1.0);
         }
         else
         {
-            a_scaled *= 1.0 + amp_mod_depth * (amp_mod_ratio - a) / (1.0 - amp_mod_ratio);
+            scaled *= 1.0 + mod_depth * (mod_ratio - a) / (1.0 - mod_ratio);
         }
+        // printf("a=%.3f scaled=%.1f\n", a, scaled);
     }
-    return a_scaled;
+    return fmax(0.0, scaled);
 }
 
-static bool test_wave(uint32_t duration_s, tChannelDef * c1, tChannelDef * c2)
+static bool play_wave(uint32_t duration_s, char channel_map, tChannelDef * c1, tChannelDef * c2, tChannelDef * c3)
 {
     tNeopixelContext neopixel = neopixel_Init(PIXEL_COUNT, NEOPIXEL_PIN, true);
 
@@ -125,8 +139,11 @@ static bool test_wave(uint32_t duration_s, tChannelDef * c1, tChannelDef * c2)
 
     TickType_t xLastWakeTime;
 
+    // min value of 5 combined with 500 in TIME_INTERVAL_MS gives a max update time of 100ms
+    float max_velocity = fmax(5.0, fmax(fabs(c1->velocity), fmax(fabs(c2->velocity), fabs(c3->velocity))));
+
     // the update period, specified in ms but then rounded to that for an integer number of ticks
-    uint32_t TIME_INTERVAL_MS = 100; // min value should be 10 for standard tick period.
+    uint32_t TIME_INTERVAL_MS = MAX((uint32_t)(500 / max_velocity) , 10);  // 100; // min value should be 10 for standard tick period.
     uint32_t time_interval_ticks = MAX(1, pdMS_TO_TICKS(TIME_INTERVAL_MS));
     uint32_t time_interval_ms = pdTICKS_TO_MS(time_interval_ticks); // dt
 
@@ -140,48 +157,79 @@ static bool test_wave(uint32_t duration_s, tChannelDef * c1, tChannelDef * c2)
     tNeopixel pixel[PIXEL_COUNT];
     for (int i = 0; i < iterations; ++i)
     {
-        // // amplitude of output may be modulated. A triangle is assumed
-        // float a_scale = c1->amplitude;
-        // if (c1->amp_mod_depth > 0)
-        // {
-        //     float a = fmod(0.001 * t_ms / c1->amp_mod_period_s, 1.0);
-        //     if (a <= 0.5)
-        //     {
-        //         a_scale *= 1.0 + c1->amp_mod_depth * (a / c1->amp_mod_ratio - 1.0);
-        //     }
-        //     else
-        //     {
-        //         a_scale *= 1.0 + c1->amp_mod_depth * (1.0 - a / c1->amp_mod_ratio);
-        //     }
-        // }
 
         tChannelDef2 c1_ = {
             .waveform = c1->waveform,
             .ratio = c1->ratio,
-            .amplitude = modulate_amp(c1->amplitude, c1->amp_mod_depth, c1->amp_mod_ratio, c1->amp_mod_period_s, t_ms),
+            .amplitude = modulate(c1->amplitude, c1->amp_mod_depth, c1->amp_mod_ratio, c1->amp_mod_period_s, c1->amp_mod_offset_s, t_ms),
             .lambda = c1->lambda,
-            .velocity = c1->velocity,
+            .velocity = modulate(c1->velocity, c1->velocity_mod_depth, c1->velocity_mod_ratio, c1->velocity_mod_period_s, c1->velocity_mod_offset_s, t_ms),
             .phase = c1->phase
         };
         tChannelDef2 c2_ = {
             .waveform = c2->waveform,
             .ratio = c2->ratio,
-            .amplitude = modulate_amp(c2->amplitude, c2->amp_mod_depth, c2->amp_mod_ratio, c2->amp_mod_period_s, t_ms),
+            .amplitude = modulate(c2->amplitude, c2->amp_mod_depth, c2->amp_mod_ratio, c2->amp_mod_period_s, c2->amp_mod_offset_s, t_ms),
             .lambda = c2->lambda,
-            .velocity = c2->velocity,
+            .velocity = modulate(c2->velocity, c2->velocity_mod_depth, c2->velocity_mod_ratio, c2->velocity_mod_period_s, c2->velocity_mod_offset_s, t_ms),
             .phase = c2->phase
+        };
+        tChannelDef2 c3_ = {
+            .waveform = c3->waveform,
+            .ratio = c3->ratio,
+            .amplitude = modulate(c3->amplitude, c3->amp_mod_depth, c3->amp_mod_ratio, c3->amp_mod_period_s, c3->amp_mod_offset_s, t_ms),
+            .lambda = c3->lambda,
+            .velocity = modulate(c3->velocity, c3->velocity_mod_depth, c3->velocity_mod_ratio, c3->velocity_mod_period_s, c3->velocity_mod_offset_s, t_ms),
+            .phase = c3->phase
         };
 
         for (int p = 0; p < PIXEL_COUNT; p++)
         {
+            uint8_t r, g, b;
+
             float a_1 = channel_value(&c1_, t_ms, p);
             float a_2 = channel_value(&c2_, t_ms, p);
-        
-            uint8_t a_1_data = a_1 * 255; // a should be in range 0.0-1.0 but RGB pixel components in range 0-255.
-            uint8_t a_2_data = a_2 * 255;
+            float a_3 = channel_value(&c3_, t_ms, p);
 
+            if (channel_map == 'h'){
+                // HSL - see https://www.rapidtables.com/convert/color/hsl-to-rgb.html
+                float C = (1.0 - fabs(2.0 * a_3 - 1)) * a_2;
+                float X = C * (1.0 - fabs(fmod(a_1 / 0.16666, 2.0) - 1.0));
+                float m = a_3 - C / 2.0;
+                if (a_1 <= 0.166666){
+                    r = 255 * (C + m);
+                    g = 255 * (X + m);
+                    b = 0;
+                } else if (a_1 <= 0.333333) {
+                    r = 255 * (X + m);
+                    g = 255 * (C + m);
+                    b = 0;
+                } else if (a_1 <= 0.5){
+                    r = 0;
+                    g = 255 * (C + m);
+                    b = 255 * (X + m);
+                } else if (a_1 <= 0.666666){
+                    r = 0;
+                    g = 255 * (X + m);
+                    b = 255 * (C + m);
+                } else if (a_1 <= 0.833333){ 
+                    r = 255 * (X + m);
+                    g = 0;
+                    b = 255 * (C + m);
+                } else {
+                    r = 255 * (C + m);
+                    g = 0;
+                    b = 255 * (X + m);
+                }
+            } else {
+                // RGB if 'r' or undefined value                
+                r = a_1 * 255; // a should be in range 0.0-1.0 but RGB pixel components in range 0-255.
+                g = a_2 * 255;
+                b = a_3 * 255;
+            }
+        
             pixel[p].index = p;
-            pixel[p].rgb = NP_RGB(a_1_data, a_2_data, 0);
+            pixel[p].rgb = NP_RGB(r, g, b);
         }
 
         neopixel_SetPixel(neopixel, pixel, ARRAY_SIZE(pixel));
@@ -206,29 +254,52 @@ void app_main(void)
 {
     for (;;)
     {
-        // test_wave(uint32_t duration_s, uint32_t lambda, float v, float amplitude, float amp_mod_depth, float amp_mod_period_s)
-        tChannelDef channel1 = {
-            .waveform = 's',
-            .ratio = 0.5,
-            .lambda = 10,
-            .velocity = 10,
-            .amplitude = 0.25,
-            .amp_mod_depth=0.95,
-            .amp_mod_ratio=0.2,
-            .amp_mod_period_s=10
+        // tChannelDef channel1 = {  // hue
+        //     .waveform = 'u',
+        //     .amplitude = 1.0,
+        //     .amp_mod_depth = 1.0,
+        //     .amp_mod_period_s = 10
+        // };
+
+        tChannelDef channel1 = {  // hue
+            .waveform = 'c',
+            .lambda = 20,
+            .velocity = 4,
+            .amplitude = 1.0,
+            .amp_mod_depth=0.8,
+            .amp_mod_period_s = 20,
+            .amp_mod_ratio=0.5
         };
-        tChannelDef channel2 = {  // or I could have done channel2 = channel1; channel2.phase=0.1 (shallow copy OK since there are no pointers in the struct)
-            .waveform = 's',
-            .ratio = 0.5,
-            .lambda = 10,
-            .velocity = 10,
-            .phase = 0.1,
-            .amplitude = 0.25,
-            .amp_mod_depth=0.95,
-            .amp_mod_ratio=0.2,
-            .amp_mod_period_s=10
+
+        // tChannelDef channel1 = {
+        //     .waveform = 's',
+        //     .ratio = 0.2,
+        //     .lambda = 20,
+        //     .velocity = 10,
+        //     .velocity_mod_depth = 0.5,
+        //     .velocity_mod_period_s = 20,
+        //     .velocity_mod_ratio = 1.0,
+        //     .amplitude = 0.25,
+        //     // .amp_mod_depth=0.95,
+        //     // .amp_mod_ratio=0.2,
+        //     // .amp_mod_period_s=10
+        // };
+
+        tChannelDef channel2 = {  // saturation
+            .waveform = 'u',
+            .amplitude = 1.0
         };
-        test_wave(20, &channel1, &channel2);
-        // test_wave(20, 20, -10.0, 0.25, 0.95, 10.0);
+        tChannelDef channel3 = {  // luminance
+            .waveform = 'u',
+            .amplitude = 0.25};
+        
+        // channel2 = channel1;
+        // channel2.phase = 0.1;
+
+        // channel3 = channel1;
+        // channel3.velocity = -channel2.velocity;
+
+        play_wave(20, 'h', &channel1, &channel2, &channel3);
+
     }
 }
