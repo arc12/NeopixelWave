@@ -1,0 +1,21 @@
+menu "SoftAP and HTTP Server"
+    config AP_PASSWORD
+        string "WiFi AP Password"
+        default ""
+        help
+            "This cannot be 'secret', which gives ESP_ERR_WIFI_PASSWORD return code at esp_wifi_set_config(), and must be at least 8 characters. Default case of no password means an open AP."
+    config AP_LOG_LEVEL
+        int "Log level (1=ERR, 2=WARN, 3=INFO, 4=DEBUG). Limited by global LOG_MAXIMUM_LEVEL."
+        default 3
+        range 1 4
+    config AP_CHANNEL
+        int "SoftAP Channel"
+        default 5
+        range 1 13
+    config AP_POWER
+        int "SoftAP TX Power"
+        default 8
+        range 8 84
+        help
+            "divide by 4 to get dBm (range is 2-20 dBm but there is mapping onto a limited range of integer values)"
+endmenu

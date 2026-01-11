@@ -10,6 +10,10 @@
 #include "driver/gpio.h"
 #include "neopixel.h"
 
+#include "struct_defs.h"
+
+#include "ap_server.h"
+
 #include <math.h>
 
 #define TAG "n-wave"
@@ -21,50 +25,13 @@
 #endif
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 
-// There are three channels with independed wave specifications which are mapped to either RGB or HSL
-// Modulation of amplitude and velocity uses a triangle form, with t=0 having no modulation and the amp/lambda being maximally REDUCED at the triangle peak
-// BEWARE that velocity_mod_ratio less than 1.0 may give rise to negative effective velocities because of the way v is used with time; the wave ends up
-// where it would have been at time t which is less advanced than it was a t - dt.
-typedef struct sChannelDef
-{
-    char waveform;             // 'c' for cosine, 't' for triangle, 's' for square, 'u' for uniform (constant - only amplitude properties apply)
-    float ratio;                // applies to triangle and square waves. Gives the fraction along the wavelenth of the max for triangle, or is the mark:space ratio for square
-    float lambda;              // wavelength in number of pixels
-    float velocity;            // speed of the wave in pixels/s. Negative is towards the ESP32 and positive is away.
-    float velocity_mod_depth;    // fraction of velocity REDUCTION at maximum modulation. 0 for no modulation. 0.9 will give 10% at max
-    float velocity_mod_ratio;    // position of triangle peak. 0=ramp down, 0.5=symmetric triangle, 1=ramp up. BEWARE - see ***
-    float velocity_mod_period_s; // period for modulation
-    float velocity_mod_offset_s; // offset to apply to the period, effectively a phase shift. May be negative
-    float amplitude;           // amplitude in range 0.0-1.0
-    float amp_mod_depth;       // similar to lambda
-    float amp_mod_ratio;
-    float amp_mod_period_s;
-    float amp_mod_offset_s;
-    float phase;               // value in range -1.0 to 1.0 for fraction of wavelength by which the wave is shifted. Negative towards ESP32, positive away.
-    // TODO add velocity modulation ???
+// Storage for the current wave.
+char channel_map = 'r';
+// These should be initialised to 0/null elements.
+tChannelDef c1 = {};
+tChannelDef c2 = {};
+tChannelDef c3 = {};
 
-} tChannelDef;
-
-// Used internally with post-modulation lambda and amp
-typedef struct sChannelDef2
-{
-    char waveform;             // 'c' for cosine, 't' for triangle, 's' for square, 'u' for uniform (constant - only amplitude properties apply)
-    float ratio;                // applies to triangle and square waves. Gives the fraction along the wavelenth of the max for triangle, or is the mark:space ratio for square
-    float lambda;              // wavelength in number of pixels
-    float amplitude;           // amplitude in range 0.0-1.0
-    float velocity;            // speed of the wave in pixels/s. Negative is towards the ESP32 and positive is away.
-    float phase;               // value in range -1.0 to 1.0 for fraction of wavelength by which the wave is shifted. Negative towards ESP32, positive away.
-
-} tChannelDef2;
-
-// for persistence to Flash
-typedef struct sWaveDef
-{
-    char channel_map;  // channels 1,2,3 map to: 'r' for RGB, 'h' for HSL
-    tChannelDef channel1;
-    tChannelDef channel2;
-    tChannelDef channel3;
-} tWaveDef;
 
 // generate a channel value for a pixel, which will either be scaled to an RGB byte or be a HSL value which is then mapped to RGB.
 // NB return values in range 0.0-1.0
@@ -127,7 +94,7 @@ inline static float modulate(float baseline, float mod_depth, float mod_ratio, f
     return fmax(0.0, scaled);
 }
 
-static bool play_wave(uint32_t duration_s, char channel_map, tChannelDef * c1, tChannelDef * c2, tChannelDef * c3)
+static bool play_wave(uint32_t duration_s)
 {
     tNeopixelContext neopixel = neopixel_Init(PIXEL_COUNT, NEOPIXEL_PIN, true);
 
@@ -140,7 +107,7 @@ static bool play_wave(uint32_t duration_s, char channel_map, tChannelDef * c1, t
     TickType_t xLastWakeTime;
 
     // min value of 5 combined with 500 in TIME_INTERVAL_MS gives a max update time of 100ms
-    float max_velocity = fmax(5.0, fmax(fabs(c1->velocity), fmax(fabs(c2->velocity), fabs(c3->velocity))));
+    float max_velocity = fmax(5.0, fmax(fabs(c1.velocity), fmax(fabs(c2.velocity), fabs(c3.velocity))));
 
     // the update period, specified in ms but then rounded to that for an integer number of ticks
     uint32_t TIME_INTERVAL_MS = MAX((uint32_t)(500 / max_velocity) , 10);  // 100; // min value should be 10 for standard tick period.
@@ -149,7 +116,7 @@ static bool play_wave(uint32_t duration_s, char channel_map, tChannelDef * c1, t
 
     uint32_t iterations = duration_s * 1000 / time_interval_ms;
 
-    ESP_LOGI(TAG, "[%s] Starting (time_interval=%ums, v=%.1f, lambda=%.1f)", __func__, time_interval_ms, c1->velocity, c1->lambda);
+    ESP_LOGI(TAG, "[%s] Starting (time_interval=%ums, v=%.1f, lambda=%.1f)", __func__, time_interval_ms, c1.velocity, c1.lambda);
 
     uint32_t t_ms = 0; // time
     xLastWakeTime = xTaskGetTickCount();
@@ -159,28 +126,28 @@ static bool play_wave(uint32_t duration_s, char channel_map, tChannelDef * c1, t
     {
 
         tChannelDef2 c1_ = {
-            .waveform = c1->waveform,
-            .ratio = c1->ratio,
-            .amplitude = modulate(c1->amplitude, c1->amp_mod_depth, c1->amp_mod_ratio, c1->amp_mod_period_s, c1->amp_mod_offset_s, t_ms),
-            .lambda = c1->lambda,
-            .velocity = modulate(c1->velocity, c1->velocity_mod_depth, c1->velocity_mod_ratio, c1->velocity_mod_period_s, c1->velocity_mod_offset_s, t_ms),
-            .phase = c1->phase
+            .waveform = c1.waveform,
+            .ratio = c1.ratio,
+            .amplitude = modulate(c1.amplitude, c1.amp_mod_depth, c1.amp_mod_ratio, c1.amp_mod_period_s, c1.amp_mod_offset_s, t_ms),
+            .lambda = c1.lambda,
+            .velocity = modulate(c1.velocity, c1.velocity_mod_depth, c1.velocity_mod_ratio, c1.velocity_mod_period_s, c1.velocity_mod_offset_s, t_ms),
+            .phase = c1.phase
         };
         tChannelDef2 c2_ = {
-            .waveform = c2->waveform,
-            .ratio = c2->ratio,
-            .amplitude = modulate(c2->amplitude, c2->amp_mod_depth, c2->amp_mod_ratio, c2->amp_mod_period_s, c2->amp_mod_offset_s, t_ms),
-            .lambda = c2->lambda,
-            .velocity = modulate(c2->velocity, c2->velocity_mod_depth, c2->velocity_mod_ratio, c2->velocity_mod_period_s, c2->velocity_mod_offset_s, t_ms),
-            .phase = c2->phase
+            .waveform = c2.waveform,
+            .ratio = c2.ratio,
+            .amplitude = modulate(c2.amplitude, c2.amp_mod_depth, c2.amp_mod_ratio, c2.amp_mod_period_s, c2.amp_mod_offset_s, t_ms),
+            .lambda = c2.lambda,
+            .velocity = modulate(c2.velocity, c2.velocity_mod_depth, c2.velocity_mod_ratio, c2.velocity_mod_period_s, c2.velocity_mod_offset_s, t_ms),
+            .phase = c2.phase
         };
         tChannelDef2 c3_ = {
-            .waveform = c3->waveform,
-            .ratio = c3->ratio,
-            .amplitude = modulate(c3->amplitude, c3->amp_mod_depth, c3->amp_mod_ratio, c3->amp_mod_period_s, c3->amp_mod_offset_s, t_ms),
-            .lambda = c3->lambda,
-            .velocity = modulate(c3->velocity, c3->velocity_mod_depth, c3->velocity_mod_ratio, c3->velocity_mod_period_s, c3->velocity_mod_offset_s, t_ms),
-            .phase = c3->phase
+            .waveform = c3.waveform,
+            .ratio = c3.ratio,
+            .amplitude = modulate(c3.amplitude, c3.amp_mod_depth, c3.amp_mod_ratio, c3.amp_mod_period_s, c3.amp_mod_offset_s, t_ms),
+            .lambda = c3.lambda,
+            .velocity = modulate(c3.velocity, c3.velocity_mod_depth, c3.velocity_mod_ratio, c3.velocity_mod_period_s, c3.velocity_mod_offset_s, t_ms),
+            .phase = c3.phase
         };
 
         for (int p = 0; p < PIXEL_COUNT; p++)
@@ -252,16 +219,17 @@ static bool play_wave(uint32_t duration_s, char channel_map, tChannelDef * c1, t
 
 void app_main(void)
 {
-    for (;;)
-    {
-        // tChannelDef channel1 = {  // hue
-        //     .waveform = 'u',
-        //     .amplitude = 1.0,
-        //     .amp_mod_depth = 1.0,
-        //     .amp_mod_period_s = 10
-        // };
+    // tChannelDef channel1 = {  // hue
+    //     .waveform = 'u',
+    //     .amplitude = 1.0,
+    //     .amp_mod_depth = 1.0,
+    //     .amp_mod_period_s = 10
+    // };
 
-        tChannelDef channel1 = {  // hue
+    // simulate a load from Flash
+    tWaveDef wave = {
+        .channel_map = 'h',
+        .channel1 = {  // hue
             .waveform = 'c',
             .lambda = 20,
             .velocity = 4,
@@ -269,7 +237,34 @@ void app_main(void)
             .amp_mod_depth=0.8,
             .amp_mod_period_s = 20,
             .amp_mod_ratio=0.5
-        };
+        },
+        .channel2 = {  // saturation
+            .waveform = 'u',
+            .amplitude = 1.0
+        },
+        .channel3 = {  // luminance
+            .waveform = 'u',
+            .amplitude = 0.25}
+    };
+
+    channel_map = wave.channel_map;
+
+    c1 = wave.channel1;
+    c2 = wave.channel2;
+    c3 = wave.channel3;
+
+    
+    begin_ap_server();
+
+        // tChannelDef channel1 = {  // hue
+        //     .waveform = 'c',
+        //     .lambda = 20,
+        //     .velocity = 4,
+        //     .amplitude = 1.0,
+        //     .amp_mod_depth=0.8,
+        //     .amp_mod_period_s = 20,
+        //     .amp_mod_ratio=0.5
+        // };
 
         // tChannelDef channel1 = {
         //     .waveform = 's',
@@ -285,13 +280,13 @@ void app_main(void)
         //     // .amp_mod_period_s=10
         // };
 
-        tChannelDef channel2 = {  // saturation
-            .waveform = 'u',
-            .amplitude = 1.0
-        };
-        tChannelDef channel3 = {  // luminance
-            .waveform = 'u',
-            .amplitude = 0.25};
+        // tChannelDef channel2 = {  // saturation
+        //     .waveform = 'u',
+        //     .amplitude = 1.0
+        // };
+        // tChannelDef channel3 = {  // luminance
+        //     .waveform = 'u',
+        //     .amplitude = 0.25};
         
         // channel2 = channel1;
         // channel2.phase = 0.1;
@@ -299,7 +294,10 @@ void app_main(void)
         // channel3 = channel1;
         // channel3.velocity = -channel2.velocity;
 
-        play_wave(20, 'h', &channel1, &channel2, &channel3);
+    for (;;)
+    {
+        play_wave(20);
+        // vTaskDelay(1);
 
     }
 }
