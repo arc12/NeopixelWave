@@ -101,24 +101,24 @@ const char* am_l = R"r(
 Modulation depth, period, ratio, offset
 <table width="100%%">
 <tr>
-<td><input name="amp_mod_depth_1" type="text" value="%.2f" size="5"/></td>
-<td><input name="amp_mod_depth_2" type="text" value="%.2f" size="5"/></td>
-<td><input name="amp_mod_depth_3" type="text" value="%.2f" size="5"/></td>
+<td><input name="am_depth_1" type="text" value="%.2f" size="5"/></td>
+<td><input name="am_depth_2" type="text" value="%.2f" size="5"/></td>
+<td><input name="am_depth_3" type="text" value="%.2f" size="5"/></td>
 </tr>
 <tr>
-<td><input name="amp_mod_period_1" type="text" value="%.1f" size="5"/>s</td>
-<td><input name="amp_mod_period_2" type="text" value="%.1f" size="5"/>s</td>
-<td><input name="amp_mod_period_3" type="text" value="%.1f" size="5"/>s</td>
+<td><input name="am_period_1" type="text" value="%.1f" size="5"/>s</td>
+<td><input name="am_period_2" type="text" value="%.1f" size="5"/>s</td>
+<td><input name="am_period_3" type="text" value="%.1f" size="5"/>s</td>
 </tr>
 <tr>
-<td><input name="amp_mod_ratio_1" type="text" value="%.2f" size="5"/></td>
-<td><input name="amp_mod_ratio_2" type="text" value="%.2f" size="5"/></td>
-<td><input name="amp_mod_ratio_3" type="text" value="%.2f" size="5"/></td>
+<td><input name="am_ratio_1" type="text" value="%.2f" size="5"/></td>
+<td><input name="am_ratio_2" type="text" value="%.2f" size="5"/></td>
+<td><input name="am_ratio_3" type="text" value="%.2f" size="5"/></td>
 </tr>
 <tr>
-<td><input name="amp_mod_offset_1" type="text" value="%.2f" size="5"/></td>
-<td><input name="amp_mod_offset_2" type="text" value="%.2f" size="5"/></td>
-<td><input name="amp_mod_offset_3" type="text" value="%.2f" size="5"/></td>
+<td><input name="am_offset_1" type="text" value="%.2f" size="5"/>s</td>
+<td><input name="am_offset_2" type="text" value="%.2f" size="5"/>s</td>
+<td><input name="am_offset_3" type="text" value="%.2f" size="5"/>s</td>
 </tr>
 </table>
 </div>
@@ -144,24 +144,24 @@ const char* vm_l = R"r(
 Modulation depth, period, ratio, offset
 <table width="100%%">
 <tr>
-<td><input name="velocity_mod_depth_1" type="text" value="%.2f" size="5"/></td>
-<td><input name="velocity_mod_depth_2" type="text" value="%.2f" size="5"/></td>
-<td><input name="velocity_mod_depth_3" type="text" value="%.2f" size="5"/></td>
+<td><input name="vm_depth_1" type="text" value="%.2f" size="5"/></td>
+<td><input name="vm_depth_2" type="text" value="%.2f" size="5"/></td>
+<td><input name="vm_depth_3" type="text" value="%.2f" size="5"/></td>
 </tr>
 <tr>
-<td><input name="velocity_mod_period_1" type="text" value="%.1f" size="5"/>s</td>
-<td><input name="velocity_mod_period_2" type="text" value="%.1f" size="5"/>s</td>
-<td><input name="velocity_mod_period_3" type="text" value="%.1f" size="5"/>s</td>
+<td><input name="vm_period_1" type="text" value="%.1f" size="5"/>s</td>
+<td><input name="vm_period_2" type="text" value="%.1f" size="5"/>s</td>
+<td><input name="vm_period_3" type="text" value="%.1f" size="5"/>s</td>
 </tr>
 <tr>
-<td><input name="velocity_mod_ratio_1" type="text" value="%.1f" size="5"/></td>
-<td><input name="velocity_mod_ratio_2" type="text" value="%.1f" size="5"/></td>
-<td><input name="velocity_mod_ratio_3" type="text" value="%.1f" size="5"/></td>
+<td><input name="vm_ratio_1" type="text" value="%.1f" size="5"/></td>
+<td><input name="vm_ratio_2" type="text" value="%.1f" size="5"/></td>
+<td><input name="vm_ratio_3" type="text" value="%.1f" size="5"/></td>
 </tr>
 <tr>
-<td><input name="velocity_mod_offset_1" type="text" value="%.2f" size="5"/></td>
-<td><input name="velocity_mod_offset_2" type="text" value="%.2f" size="5"/></td>
-<td><input name="velocity_mod_offset_3" type="text" value="%.2f" size="5"/></td>
+<td><input name="vm_offset_1" type="text" value="%.2f" size="5"/>s</td>
+<td><input name="vm_offset_2" type="text" value="%.2f" size="5"/>s</td>
+<td><input name="vm_offset_3" type="text" value="%.2f" size="5"/>s</td>
 </tr>
 </table>
 </div>
