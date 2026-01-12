@@ -1,9 +1,3 @@
-// This is the "unit test" example from the Zorxx github repo: https://github.com/zorxx/neopixel/tree/main
-// SUPPLEMENTED with a basic sine wave prototype for the Neopixel Wave firmware
-/* \copyright 2023 Zorxx Software. All rights reserved.
- * \license This file is released under the MIT License. See the LICENSE file for details.
- * \brief ESP32 Neopixel Driver Library Example Application
- */
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include "esp_log.h"
@@ -219,12 +213,7 @@ static bool play_wave(uint32_t duration_s)
 
 void app_main(void)
 {
-    // tChannelDef channel1 = {  // hue
-    //     .waveform = 'u',
-    //     .amplitude = 1.0,
-    //     .amp_mod_depth = 1.0,
-    //     .amp_mod_period_s = 10
-    // };
+    begin_ap_server();
 
     // simulate a load from Flash
     tWaveDef wave = {
@@ -253,51 +242,8 @@ void app_main(void)
     c2 = wave.channel2;
     c3 = wave.channel3;
 
-    
-    begin_ap_server();
-
-        // tChannelDef channel1 = {  // hue
-        //     .waveform = 'c',
-        //     .lambda = 20,
-        //     .velocity = 4,
-        //     .amplitude = 1.0,
-        //     .amp_mod_depth=0.8,
-        //     .amp_mod_period_s = 20,
-        //     .amp_mod_ratio=0.5
-        // };
-
-        // tChannelDef channel1 = {
-        //     .waveform = 's',
-        //     .ratio = 0.2,
-        //     .lambda = 20,
-        //     .velocity = 10,
-        //     .velocity_mod_depth = 0.5,
-        //     .velocity_mod_period_s = 20,
-        //     .velocity_mod_ratio = 1.0,
-        //     .amplitude = 0.25,
-        //     // .amp_mod_depth=0.95,
-        //     // .amp_mod_ratio=0.2,
-        //     // .amp_mod_period_s=10
-        // };
-
-        // tChannelDef channel2 = {  // saturation
-        //     .waveform = 'u',
-        //     .amplitude = 1.0
-        // };
-        // tChannelDef channel3 = {  // luminance
-        //     .waveform = 'u',
-        //     .amplitude = 0.25};
-        
-        // channel2 = channel1;
-        // channel2.phase = 0.1;
-
-        // channel3 = channel1;
-        // channel3.velocity = -channel2.velocity;
-
     for (;;)
     {
-        play_wave(20);
-        // vTaskDelay(1);
-
+        play_wave(120);
     }
 }
