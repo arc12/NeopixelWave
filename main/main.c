@@ -166,26 +166,26 @@ static bool play_wave(uint32_t duration_s)
                 if (a_1 <= 0.166666){
                     r = 255 * (C + m);
                     g = 255 * (X + m);
-                    b = 0;
+                    b = 255 * m;
                 } else if (a_1 <= 0.333333) {
                     r = 255 * (X + m);
                     g = 255 * (C + m);
-                    b = 0;
+                    b = 255 * m;
                 } else if (a_1 <= 0.5){
-                    r = 0;
+                    r = 255 * m;
                     g = 255 * (C + m);
                     b = 255 * (X + m);
                 } else if (a_1 <= 0.666666){
-                    r = 0;
+                    r = 255 * m;
                     g = 255 * (X + m);
                     b = 255 * (C + m);
                 } else if (a_1 <= 0.833333){ 
                     r = 255 * (X + m);
-                    g = 0;
+                    g = 255 * m;
                     b = 255 * (C + m);
                 } else {
                     r = 255 * (C + m);
-                    g = 0;
+                    g = 255 * m;
                     b = 255 * (X + m);
                 }
             } else {
